@@ -7,10 +7,14 @@ import {
   type UserNeeds,
 } from "@/lib/domain";
 
-interface InterpretationResult {
+export interface InterpretationResult {
   needs: UserNeeds;
   trace: AiTrace;
 }
+
+type InterpretationProvider = (
+  input: PlanRequest,
+) => Promise<InterpretationResult>;
 
 interface ProviderResponse {
   status: number;
@@ -116,6 +120,9 @@ function providerHttpError(provider: string, response: ProviderResponse): Error 
 function deterministicInterpretation(input: PlanRequest): UserNeeds {
   const text = input.request.toLowerCase();
   const durationMatch = text.match(/(\d+)\s*(?:hour|hours|hr|hrs)/);
+  const changingPlacesFromRequest = /\bchanging places\b/.test(text);
+  const avoidSteepRampsFromRequest =
+    /(?:avoid|cannot use|can't use|unable to use|no)\s+(?:a\s+)?steep ramps?/.test(text);
 
   return userNeedsSchema.parse({
     wheelchairUser: /wheelchair|mobility|step[- ]free/.test(text),
@@ -124,8 +131,8 @@ function deterministicInterpretation(input: PlanRequest): UserNeeds {
     accessibleCafe: /caf[eé]|coffee|food/.test(text),
     museumVisit: /museum|gallery/.test(text),
     accessibleToilet: /toilet|restroom|bathroom/.test(text),
-    changingPlaces: input.needsChangingPlaces,
-    avoidSteepRamps: input.avoidSteepRamps,
+    changingPlaces: input.needsChangingPlaces || changingPlacesFromRequest,
+    avoidSteepRamps: input.avoidSteepRamps || avoidSteepRampsFromRequest,
     origin: "Victoria Station",
     destination: "Natural History Museum",
     durationHours: durationMatch ? Number(durationMatch[1]) : 5,
@@ -146,12 +153,19 @@ function extractJson(content: string): unknown {
   return JSON.parse(cleaned.slice(start, end + 1));
 }
 
-function validatedNeeds(content: string, input: PlanRequest): UserNeeds {
+export function validatedNeeds(content: string, input: PlanRequest): UserNeeds {
   const parsed = userNeedsSchema.parse(extractJson(content));
+  const deterministic = deterministicInterpretation(input);
   return userNeedsSchema.parse({
     ...parsed,
-    changingPlaces: input.needsChangingPlaces,
-    avoidSteepRamps: input.avoidSteepRamps,
+    changingPlaces:
+      input.needsChangingPlaces ||
+      parsed.changingPlaces ||
+      deterministic.changingPlaces,
+    avoidSteepRamps:
+      input.avoidSteepRamps ||
+      parsed.avoidSteepRamps ||
+      deterministic.avoidSteepRamps,
     origin: "Victoria Station",
     destination: "Natural History Museum",
   });
@@ -283,6 +297,7 @@ async function configuredAiInterpretation(input: PlanRequest): Promise<Interpret
 export async function interpretRequest(
   input: PlanRequest,
   enableAi = true,
+  provider: InterpretationProvider = configuredAiInterpretation,
 ): Promise<InterpretationResult> {
   if (!enableAi) {
     return {
@@ -295,7 +310,7 @@ export async function interpretRequest(
   }
 
   try {
-    return await configuredAiInterpretation(input);
+    return await provider(input);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown provider error";
     const isDevelopment = process.env.NODE_ENV !== "production";

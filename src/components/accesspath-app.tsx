@@ -64,8 +64,13 @@ function formatDate(value: string) {
   }).format(new Date(value));
 }
 
+function routeIsUsable(route: RouteResult) {
+  return route.status === "verified" || route.status === "usable-with-caveats";
+}
+
 function routeStateLabel(route: RouteResult) {
-  if (route.status === "verified") return "Ready with evidence";
+  if (route.status === "verified") return "Meets every requirement";
+  if (route.status === "usable-with-caveats") return "Usable with caveats";
   if (route.status === "blocked") return "Does not meet profile";
   return "Critical review needed";
 }
@@ -81,7 +86,8 @@ function RouteSummary({
   locked?: boolean;
   onSelect: () => void;
 }) {
-  const isVerified = route.status === "verified";
+  const isUsable = routeIsUsable(route);
+  const hasCaveats = route.status === "usable-with-caveats";
   const isBlocked = route.status === "blocked";
 
   return (
@@ -102,7 +108,13 @@ function RouteSummary({
             <><Sparkles size={15} /> Awaiting verification</>
           ) : (
             <>
-              {isVerified ? <Check size={15} /> : isBlocked ? <X size={15} /> : <TriangleAlert size={15} />}
+              {isUsable ? (
+                hasCaveats ? <Info size={15} /> : <Check size={15} />
+              ) : isBlocked ? (
+                <X size={15} />
+              ) : (
+                <TriangleAlert size={15} />
+              )}
               {routeStateLabel(route)}
             </>
           )}
@@ -110,7 +122,11 @@ function RouteSummary({
       </span>
       <span className="route-summary-score">
         <strong>{locked ? "—" : `${route.confidence}%`}</strong>
-        <span>{locked ? "Run verification to reveal" : route.confidenceLabel}</span>
+        <span>
+          {locked
+            ? "Run verification to reveal"
+            : `Route usability confidence · ${route.confidenceLabel}`}
+        </span>
       </span>
     </button>
   );
@@ -151,7 +167,11 @@ function SegmentCard({
             <strong>{segment.title}</strong>
             {segment.changed && (
               <span className={`change-label ${segment.changed}`}>
-                {segment.changed === "added" ? "Replanned" : "Avoided"}
+                {segment.changed === "added"
+                  ? "Selected"
+                  : segment.changed === "removed"
+                    ? "Rejected"
+                    : "Evaluated"}
               </span>
             )}
           </span>
@@ -289,9 +309,8 @@ export function AccessPathApp({ initialPlan }: { initialPlan: PlanResult }) {
 
   function selectRoute(route: "initial" | "revised") {
     const target = route === "initial" ? plan.initialRoute : plan.revisedRoute;
-    const preferredId = route === "initial" ? "east-entrance" : "central-entrance";
     setActiveRoute(route);
-    setSelected({ route, id: preferredId });
+    setSelected({ route, id: target.candidateId });
     setAnnouncement(`${target.label} selected. ${routeStateLabel(target)}.`);
   }
 
@@ -319,11 +338,9 @@ export function AccessPathApp({ initialPlan }: { initialPlan: PlanResult }) {
       setPlan(nextPlan);
       setHasVerified(true);
       setActiveRoute("revised");
-      setSelected({ route: "revised", id: "central-entrance" });
+      setSelected({ route: "revised", id: nextPlan.revisedRoute.candidateId });
       setAnnouncement(
-        nextPlan.revisedRoute.status === "verified"
-          ? `Verification complete. Route replanned with ${nextPlan.revisedRoute.confidence}% confidence.`
-          : `Verification complete. ${nextPlan.replan.title}. Review is required before travel.`,
+        `Verification complete. ${nextPlan.replan.title}. Route usability confidence is ${nextPlan.revisedRoute.confidence}%.`,
       );
     } catch (caught) {
       const message = caught instanceof Error ? caught.message : "Unable to evaluate the journey.";
@@ -438,7 +455,7 @@ export function AccessPathApp({ initialPlan }: { initialPlan: PlanResult }) {
                   {loading
                     ? "Structuring your requirements and checking each critical segment."
                     : hasVerified
-                      ? `${plan.ai.mode === "gemini" ? "Gemini" : plan.ai.mode === "featherless" ? "Featherless" : "Local fallback"} evaluated the request. Route confidence changed from ${plan.initialRoute.confidence}% to ${plan.revisedRoute.confidence}%.`
+                      ? `${plan.ai.mode === "gemini" ? "Gemini" : plan.ai.mode === "featherless" ? "Featherless" : "Local fallback"} structured the request. Route usability confidence changed from ${plan.initialRoute.confidence}% to ${plan.revisedRoute.confidence}%.`
                       : `The unrepaired route is shown below at ${plan.initialRoute.confidence}% confidence.`}
                 </small>
               </span>
@@ -456,15 +473,57 @@ export function AccessPathApp({ initialPlan }: { initialPlan: PlanResult }) {
               <h2 id="results-title">
                 {!hasVerified
                   ? "Initial route found. Verification pending."
-                  : plan.revisedRoute.status === "verified"
-                    ? "One barrier found. One route repaired."
-                    : plan.revisedRoute.status === "blocked"
-                      ? "One barrier found. No usable route confirmed."
-                      : "Verification complete. Critical review required."}
+                  : plan.replan.outcome === "replanned"
+                    ? "One barrier found. Best usable route selected."
+                    : plan.replan.outcome === "no-match"
+                      ? "Every candidate checked. No usable route confirmed."
+                      : "Preferred route verified. No replan needed."}
               </h2>
             </div>
             <div className="data-badge"><BadgeCheck size={16} /> {plan.dataMode}</div>
           </div>
+
+          {hasVerified && (
+            <section className="verification-receipt" aria-labelledby="verification-receipt-title">
+              <div className="verification-receipt-heading">
+                <span className="verification-receipt-icon" aria-hidden="true"><Sparkles size={19} /></span>
+                <div>
+                  <p className="eyebrow">Interpreted profile</p>
+                  <h3 id="verification-receipt-title">
+                    {plan.ai.mode === "gemini"
+                      ? "Gemini structured the request"
+                      : plan.ai.mode === "featherless"
+                        ? "Featherless structured the request"
+                        : "Validated local fallback structured the request"}
+                  </h3>
+                  <p>{plan.candidates.length} entrance candidates were then evaluated by deterministic evidence rules.</p>
+                </div>
+              </div>
+              <ul className="constraint-list" aria-label="Required accessibility constraints">
+                {plan.constraints
+                  .filter((constraint) => constraint.required)
+                  .map((constraint) => (
+                    <li key={constraint.id}>
+                      <Check size={14} aria-hidden="true" />
+                      <span>{constraint.label}</span>
+                      <small>
+                        {constraint.source === "control"
+                          ? "Explicit control"
+                          : constraint.source === "request"
+                            ? "Understood from request"
+                            : "Supported pilot default"}
+                      </small>
+                    </li>
+                  ))}
+              </ul>
+              <details className="decision-trace">
+                <summary>See the four-stage verification trace</summary>
+                <ol>
+                  {plan.stages.map((stage) => <li key={stage}>{stage}</li>)}
+                </ol>
+              </details>
+            </section>
+          )}
 
           <div className="route-switcher" aria-label="Compare route assessments">
             <RouteSummary
@@ -484,10 +543,16 @@ export function AccessPathApp({ initialPlan }: { initialPlan: PlanResult }) {
           {hasVerified ? (
             <div className="replan-callout" data-status={plan.revisedRoute.status}>
               <div className="replan-icon" aria-hidden="true">
-                {plan.revisedRoute.status === "verified" ? <ShieldCheck size={22} /> : <TriangleAlert size={22} />}
+                {routeIsUsable(plan.revisedRoute) ? <ShieldCheck size={22} /> : <TriangleAlert size={22} />}
               </div>
               <div>
-                <p className="eyebrow">Automatic replan</p>
+                <p className="eyebrow">
+                  {plan.replan.outcome === "replanned"
+                    ? "Deterministic replan"
+                    : plan.replan.outcome === "no-match"
+                      ? "Candidate evaluation"
+                      : "Route retained"}
+                </p>
                 <h3>{plan.replan.title}</h3>
                 <p>{plan.replan.explanation}</p>
               </div>

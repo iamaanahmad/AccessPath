@@ -337,20 +337,36 @@ export function toilet(needsChangingPlaces: boolean): SegmentDefinition {
   };
 }
 
-export function getInitialSegments(needsChangingPlaces: boolean): SegmentDefinition[] {
-  return [origin, transport, eastEntrance, museum, cafe, toilet(needsChangingPlaces)];
+export type EntranceCandidateId = "east-entrance" | "central-entrance";
+
+export interface EntranceCandidateDefinition {
+  id: EntranceCandidateId;
+  label: string;
+  preference: number;
 }
 
-export function getRevisedSegments(
+export const entranceCandidates: EntranceCandidateDefinition[] = [
+  {
+    id: "east-entrance",
+    label: "East Entrance",
+    preference: 0,
+  },
+  {
+    id: "central-entrance",
+    label: "Central Entrance via East Gate",
+    preference: 1,
+  },
+];
+
+export function getSegmentsForEntrance(
+  entranceId: EntranceCandidateId,
   needsChangingPlaces: boolean,
   avoidSteepRamps: boolean,
 ): SegmentDefinition[] {
-  return [
-    origin,
-    transport,
-    centralEntrance(avoidSteepRamps),
-    museum,
-    cafe,
-    toilet(needsChangingPlaces),
-  ];
+  const entrance =
+    entranceId === "east-entrance"
+      ? eastEntrance
+      : centralEntrance(avoidSteepRamps);
+
+  return [origin, transport, entrance, museum, cafe, toilet(needsChangingPlaces)];
 }

@@ -104,19 +104,44 @@ export interface SegmentResult extends Omit<SegmentDefinition, "requirements"> {
   confidence: number;
   meetsRequirement: boolean | null;
   assessments: Assessment[];
-  changed?: "removed" | "added";
+  changed?: "removed" | "added" | "considered";
 }
 
-export type RouteStatus = "verified" | "needs-review" | "blocked";
+export type RouteStatus =
+  | "verified"
+  | "usable-with-caveats"
+  | "needs-review"
+  | "blocked";
 
 export interface RouteResult {
   id: "initial" | "revised";
+  candidateId: string;
   label: string;
   status: RouteStatus;
   confidence: number;
   confidenceLabel: string;
   segments: SegmentResult[];
 }
+
+export type ConstraintSource = "request" | "control" | "pilot-default";
+
+export interface InterpretedConstraint {
+  id: string;
+  label: string;
+  required: boolean;
+  source: ConstraintSource;
+}
+
+export interface CandidateEvaluation {
+  id: string;
+  label: string;
+  status: RouteStatus;
+  confidence: number;
+  selected: boolean;
+  summary: string;
+}
+
+export type ReplanOutcome = "unchanged" | "replanned" | "no-match";
 
 export interface AiTrace {
   mode: "gemini" | "featherless" | "deterministic-fallback";
@@ -130,16 +155,19 @@ export interface PlanResult {
   dataMode: "Curated evidence snapshot";
   request: string;
   needs: UserNeeds;
+  constraints: InterpretedConstraint[];
+  candidates: CandidateEvaluation[];
   ai: AiTrace;
   stages: string[];
   initialRoute: RouteResult;
   revisedRoute: RouteResult;
   replan: {
     triggered: boolean;
+    outcome: ReplanOutcome;
     title: string;
     explanation: string;
-    removedSegmentId: string;
-    addedSegmentId: string;
+    removedSegmentId: string | null;
+    addedSegmentId: string | null;
   };
   sources: EvidenceSource[];
   disclaimer: string;

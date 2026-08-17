@@ -200,10 +200,14 @@ function routeStatus(segments: SegmentResult[]): RouteStatus {
   if (critical.some((segment) => segment.status === "Inaccessible")) return "blocked";
   if (
     critical.some(
-      (segment) => segment.status === "Conflicting" || segment.status === "Unknown",
+      (segment) =>
+        segment.status === "Conflicting" || segment.status === "Unknown",
     )
   ) {
     return "needs-review";
+  }
+  if (critical.some((segment) => segment.status === "Likely")) {
+    return "usable-with-caveats";
   }
   return "verified";
 }
@@ -237,13 +241,15 @@ function routeConfidence(status: RouteStatus, segments: SegmentResult[]): number
 }
 
 function confidenceLabel(status: RouteStatus): string {
-  if (status === "verified") return "Evidence-backed route";
-  if (status === "needs-review") return "Critical conflict found";
-  return "Route blocked";
+  if (status === "verified") return "Confidence this route meets every requirement";
+  if (status === "usable-with-caveats") return "Usable route with evidence caveats";
+  if (status === "needs-review") return "Usability limited by a critical conflict";
+  return "Requirement not met; route is blocked";
 }
 
 export function assessRoute(
   id: RouteResult["id"],
+  candidateId: string,
   label: string,
   definitions: SegmentDefinition[],
   claims: EvidenceClaim[],
@@ -257,6 +263,7 @@ export function assessRoute(
 
   return {
     id,
+    candidateId,
     label,
     status,
     confidence: routeConfidence(status, segments),
