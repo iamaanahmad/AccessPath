@@ -6,7 +6,8 @@ AccessPath is an AI-assisted accessibility verification and replanning experienc
 
 The current London pilot evaluates a five-hour wheelchair-accessible journey from Victoria Station to the Natural History Museum. It detects that the preferred East Entrance depends on a lift the museum currently reports out of service, evaluates the supported entrance candidates, and selects the documented step-free Central Entrance while keeping its ramp caveat visible.
 
-**Public repository:** [github.com/iamaanahmad/AccessPath](https://github.com/iamaanahmad/AccessPath)
+- **Live project:** [www.accesspaths.xyz](https://www.accesspaths.xyz/)
+- **Public repository:** [github.com/iamaanahmad/AccessPath](https://github.com/iamaanahmad/AccessPath)
 
 ## Why this is different
 
@@ -35,7 +36,7 @@ The server uses the [Gemini Developer API free tier](https://ai.google.dev/gemin
 
 Explicit controls and interpreted prose are combined conservatively: either can add a supported critical requirement. The resulting profile is shown in the UI with request/control provenance before deterministic code evaluates route candidates. This makes model inference visible and consequential without allowing the model to decide accessibility status or confidence.
 
-Featherless remains supported as an optional provider if credits become available. Set `AI_PROVIDER` to `gemini` or `featherless`; when it is unset, AccessPath selects the configured provider without exposing credentials to the browser.
+Featherless sponsor access is also implemented and live-validated with `Qwen/Qwen2.5-7B-Instruct`. Set `AI_PROVIDER` to `gemini` or `featherless`; when it is unset, AccessPath selects the configured provider without exposing credentials to the browser. Gemini remains the deployment default because its structured JSON Schema mode is the most reliable primary path; Featherless proves the provider boundary with a pinned open-weight model.
 
 If the selected provider is unconfigured, times out, errors, or returns invalid output, AccessPath falls back to a local parser and labels the run **Reliable fallback active**. It never presents fallback processing as live AI.
 
@@ -98,7 +99,7 @@ Key locations:
 - `src/lib/candidate-planner.ts` — pure deterministic candidate ranking and outcome selection
 - `src/lib/ai/request-interpreter.ts` — server-only Gemini/Featherless provider boundary and explicit fallback
 - `src/lib/planner.ts` — interpreted-profile, candidate-assessment, and decision orchestration
-- `tests/` — scenario, candidate, fallback, evidence-integrity, and route-gating checks
+- `tests/` — 15 offline scenario/integrity checks plus two opt-in live Featherless checks
 - `src/app/api/plan/route.ts` — validated planning API
 - `src/app/api/health/route.ts` — deployment health endpoint
 
@@ -114,7 +115,7 @@ npm run dev
 
 Open `http://localhost:3000`. Create a Gemini API key in [Google AI Studio](https://aistudio.google.com/app/apikey), then set `GEMINI_API_KEY` in `.env.local` to enable live request interpretation. `GEMINI_MODEL` defaults to `gemini-3.1-flash-lite`; `AI_PROVIDER=gemini` makes the selection explicit.
 
-Featherless remains optional. If credits become available later, set `AI_PROVIDER=featherless`, `FEATHERLESS_API_KEY`, and `FEATHERLESS_MODEL` instead.
+Featherless sponsor access is optional but verified. Set `AI_PROVIDER=featherless`, add `FEATHERLESS_API_KEY`, and retain the pinned `FEATHERLESS_MODEL=Qwen/Qwen2.5-7B-Instruct`. Run `npm run test:featherless` to exercise both live provider scenarios through the real planning pipeline. The normal offline suite never reads a provider key.
 
 Do not commit `.env.local`. Model credentials are read only in the server runtime and are never included in client props or browser code. The Gemini free tier may use submitted content to improve Google products, so the demo warns users not to enter names, contact details, or medical records.
 
@@ -124,16 +125,32 @@ Do not commit `.env.local`. Model credentials are read only in the server runtim
 npm run typecheck
 npm run lint
 npm test
+npm run test:featherless # opt-in live provider check; requires .env.local
 npm run build
 ```
 
-`npm test` runs 15 deterministic checks across five suites without provider credentials or network access. The suite proves the normal replan, prose-driven no-match behavior, requirement removal, all candidate outcomes, missing-evidence and conflict gating, `Likely` caveat semantics, source/claim integrity, provider-failure fallback, and protection against a model dropping an explicit supported critical phrase.
+`npm test` runs 15 deterministic checks across five active suites without provider credentials or network access; the separate Featherless file remains skipped during this command. The offline suite proves the normal replan, prose-driven no-match behavior, requirement removal, all candidate outcomes, missing-evidence and conflict gating, `Likely` caveat semantics, source/claim integrity, provider-failure fallback, and protection against a model dropping an explicit supported critical phrase.
+
+`npm run test:featherless` runs two opt-in live checks through the complete AccessPath pipeline: normal candidate selection and the prose-only no-match scenario. It is evidence for the sponsor integration, not a CI dependency.
 
 Dependency versions are exact-pinned, and `package-lock.json` is committed for reproducible installation.
 
+## Sponsor-backed validation
+
+Sponsor tools are used only where they strengthen the product or its quality evidence:
+
+- **Featherless:** The optional provider is pinned to `Qwen/Qwen2.5-7B-Instruct`. Two opt-in live tests pass through the real provider boundary, Zod validation, evidence assessment, and candidate selector: the normal request selects the Central Entrance, while the prose-only steep-ramp requirement returns `no-match`. Gemini remains the deployment default rather than switching providers for sponsor visibility.
+- **Hawkeye:** Hawkeye 1.0.2 and the local AI Bridge 1.0.1 indexed the project and returned a healthy status. Sanitized exact searches traced `selectRouteCandidate` across 7 hits in 3 engine/test files, `deterministic-fallback` across 4 hits in 3 files, claim/source linkage across assessment and integrity tests, Gemini environment access only in the server-side provider file, and the non-live-status disclaimer in both code and documentation. Hawkeye runs locally; no source was uploaded. These are architecture and traceability checks, not an accessibility-conformance audit.
+- **Prelint:** The public repository is connected for automatic pull-request checks. The sponsor-validation branch is intentionally being submitted through a PR; its completed report and any resolved findings will be retained after Prelint runs. No passing Prelint result is claimed before that check completes.
+- **.XYZ:** The sponsor domain [accesspaths.xyz](https://www.accesspaths.xyz/) is connected to the hosted application. HTTPS, the public page, and `/api/health` were verified against the custom domain.
+
+Only exact project-specific Hawkeye queries are reported. Broad local searches currently include dependency files, so their hit totals are deliberately excluded from submission claims.
+
 ## Deploy
 
-The application is designed for Vercel's Next.js runtime:
+The live Vercel deployment is available at **[https://www.accesspaths.xyz/](https://www.accesspaths.xyz/)**. The custom domain serves the application over HTTPS, and `/api/health` returns `{"status":"ok","service":"accesspath"}`.
+
+Production configuration and smoke checks:
 
 1. Import the public [`iamaanahmad/AccessPath`](https://github.com/iamaanahmad/AccessPath) repository into Vercel.
 2. Add `AI_PROVIDER=gemini`, `GEMINI_API_KEY`, and optionally `GEMINI_MODEL` as encrypted environment variables.
@@ -169,7 +186,7 @@ Application work:
 
 - [x] Functional evidence-backed London workflow
 - [x] Meaningful Gemini free-tier integration with JSON Schema and Zod validation
-- [x] Optional Featherless provider retained for future credits
+- [x] Live-validated Featherless provider with pinned `Qwen/Qwen2.5-7B-Instruct`
 - [x] Honest deterministic fallback
 - [x] Official-source evidence graph and visible provenance
 - [x] Real conflict detection and candidate-based `unchanged` / `replanned` / `no-match` decisions
@@ -183,14 +200,16 @@ Application work:
 External shipping work:
 
 - [x] Create and push the [public repository](https://github.com/iamaanahmad/AccessPath)
-- [ ] Create a Gemini API key in Google AI Studio and configure it in Vercel
-- [ ] Confirm the production UI reports **Gemini reasoning active**
-- [ ] Run Prelint and retain the report for the submission
-- [ ] Add Hawkeye scenario evaluation if it can be completed without risking the core
-- [ ] Deploy to Vercel and verify the production URL
+- [x] Deploy to Vercel and verify [the production URL](https://www.accesspaths.xyz/)
+- [x] Connect and verify the sponsored `.xyz` custom domain
+- [x] Add `AI_PROVIDER=gemini` and `GEMINI_API_KEY` to the Vercel production environment, then redeploy
+- [x] Confirm the production UI reports **Gemini reasoning active** after provider environment redeployment
+- [x] Connect the public repository to Prelint for pull-request checks
+- [ ] Retain the completed Prelint PR report and resolved findings for the submission
+- [x] Activate Hawkeye and index the AccessPath repository locally
+- [x] Retain sanitized Hawkeye architecture and traceability evidence
 - [ ] Record and upload the approximately three-minute video
 - [ ] Complete the Devpost project before **22 August 2026 at 9:30 PM GMT+5:30**
-- [ ] Optionally claim the limited `.xyz` participant domain through the hackathon Discord
 
 ## License
 

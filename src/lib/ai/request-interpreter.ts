@@ -25,8 +25,13 @@ type ProviderName = "gemini" | "featherless";
 
 const GEMINI_API_BASE_URL = "https://generativelanguage.googleapis.com/v1beta";
 
-const SYSTEM_PROMPT =
-  "Extract accessibility constraints from the user's trip request. Do not invent accessibility or venue facts. Return only data that matches the provided schema.";
+const SYSTEM_PROMPT = [
+  "Extract accessibility constraints from the user's trip request.",
+  "Do not invent accessibility or venue facts.",
+  "Return exactly one JSON object with no markdown and exactly these keys:",
+  "wheelchairUser, stepFreeTransport, stepFreeEntrance, accessibleCafe, museumVisit, accessibleToilet, changingPlaces, avoidSteepRamps, origin, destination, durationHours.",
+  "Use booleans for accessibility fields, strings for origin and destination, and a number from 1 to 12 for durationHours.",
+].join(" ");
 
 const RESPONSE_JSON_SCHEMA = {
   type: "object",
